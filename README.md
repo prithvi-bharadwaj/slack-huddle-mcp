@@ -104,13 +104,13 @@ Given a 3-person huddle transcript, `get_huddle_transcript(huddle_id="H...", for
 
 Consecutive same-speaker lines are merged. Timestamps use the start of each turn.
 
-## 6. What we tried that didn't work
+## 6. Dead ends I hit (so you don't have to)
 
 <details>
-<summary><b>Dead ends — credibility builder, saves contributors time. Click to expand.</b></summary>
+<summary><b>Things I tried that didn't work — saves contributors time. Click to expand.</b></summary>
 
 - `files.info` **without** `include_transcription=true` — the field is recognized but `huddle_transcription` returns empty `{}`.
-- Direct `GET https://files.slack.com/files-pri/{team}-{file}/huddle_transcript` with cookie + bearer — redirects to the Slack React app HTML shell. The content is loaded by a follow-up XHR (the one we use).
+- Direct `GET https://files.slack.com/files-pri/{team}-{file}/huddle_transcript` with cookie + bearer — redirects to the Slack React app HTML shell. The content is loaded by a follow-up XHR (the one this tool uses).
 - `files.sharedPublicURL` — returns `not_allowed` on most workspaces (admin policy).
 - Public URL with `pub_secret=...` — only works after `files.sharedPublicURL` succeeds.
 - Endpoint guesses that all returned `unknown_method`: `huddleSummary.*`, `huddleTranscript.*`, `huddles.transcript.*`, `huddles.summary.*`, `ml.huddles.*`, `transcripts.*`, `files.transcribe.*`, `files.preview.*`, `files.huddleTranscription`, `calls.summary`, `calls.transcript.get`, plus ~25 other variants.
