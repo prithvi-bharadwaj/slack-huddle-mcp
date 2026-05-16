@@ -1,0 +1,19 @@
+{
+  "ok": true,
+  "file": {
+    "id": "F0CANVAS0001",
+    "is_huddle_canvas": true,
+    "huddle_transcript_file_id": "F0TRANSCRIPT01",
+    "huddle_summary_id": "S00000001",
+    "huddle_date_start": 1731499200,
+    "huddle_date_end": 1731500700,
+    "mimetype": "application/vnd.slack-docs",
+    "permalink": "https://example.slack.com/docs/T00000001/F0CANVAS0001",
+    "plain_text": "Lorem ipsum standup summary: dolor sit amet.",
+    "attendees": ["U00000001", "U00000002", "U00000003"],
+    "action_items": [
+      {"owner": "U00000001", "text": "Ut enim ad minim veniam.", "timestamp": "120000"},
+      {"owner": "U00000002", "text": "Duis aute irure dolor.", "timestamp": "300000"}
+    ]
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "ok": true,
+  "huddles": [
+    {
+      "id": "H0000000001",
+      "date_start": 1731499200,
+      "date_end": 1731500700,
+      "channels": ["C00000001"],
+      "participant_history": [
+        {"user_id": "U00000001"},
+        {"user_id": "U00000002"},
+        {"user_id": "U00000003"}
+      ],
+      "transcript_file_id": "F0CANVAS0001",
+      "huddle_link": "https://example.slack.com/huddle/T00000001/H0000000001",
+      "thread_root_ts": "1731499200.000100"
+    },
+    {
+      "id": "H0000000002",
+      "date_start": 1731412800,
+      "date_end": 1731414000,
+      "channels": ["C00000002"],
+      "participant_history": [
+        {"user_id": "U00000001"},
+        {"user_id": "U00000002"}
+      ],
+      "transcript_file_id": "F0CANVAS0002",
+      "huddle_link": "https://example.slack.com/huddle/T00000001/H0000000002",
+      "thread_root_ts": "1731412800.000200"
+    }
+  ]
+}
