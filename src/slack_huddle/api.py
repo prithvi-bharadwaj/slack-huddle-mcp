@@ -21,7 +21,7 @@ import httpx
 logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT = httpx.Timeout(30.0, connect=10.0)
-DEFAULT_USER_AGENT = "slack-huddle-mcp/0.1.0 (+https://github.com/prithvi/slack-huddle-mcp)"
+DEFAULT_USER_AGENT = "slack-huddle-mcp/0.2.0 (+https://github.com/prithvi-bharadwaj/slack-huddle-mcp)"
 MAX_RETRIES = 3
 
 

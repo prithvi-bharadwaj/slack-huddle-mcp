@@ -13,7 +13,7 @@ from slack_huddle.parser import (
     parse_transcription,
 )
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     "AuthError",

@@ -32,11 +32,19 @@ There's an undocumented endpoint the Slack web client itself uses. This MCP serv
 
 ```bash
 pipx install slack-huddle-mcp        # or: pip install slack-huddle-mcp
-slack-huddle-mcp setup               # interactive — extracts and stores tokens
+slack-huddle-mcp setup --auto        # macOS: auto-extract from the Slack desktop app
 slack-huddle-mcp smoke-test          # end-to-end check on your latest huddle
 ```
 
-Paste the MCP config snippet that `setup` prints into your MCP client, restart it, and ask your agent:
+Three ways to give the tool your tokens, in order of how much effort they take:
+
+| Setup path | Effort | What you need |
+| ---------- | ------ | ------------- |
+| `setup --auto` *(macOS)* | **zero clicks** after one Keychain "Always Allow" | Slack desktop app installed and logged in |
+| `bookmarklet` | one click on `app.slack.com`, paste `xoxd` once | Any modern browser |
+| `setup` *(manual)* | DevTools console + cookies tab | Any browser |
+
+After setup, paste the MCP config snippet that `setup` prints into your MCP client, restart it, and ask your agent:
 
 > *"Summarize today's standup from #standups in three bullets and list any blockers by owner."*
 
@@ -122,9 +130,35 @@ Consecutive same-speaker lines are merged. Timestamps use the start of each turn
 
 ## 7. Token extraction guide
 
+### Option A — auto-extract from the Slack desktop app (macOS)
+
+```bash
+slack-huddle-mcp setup --auto              # extract, validate, store
+slack-huddle-mcp setup --auto --dry-run    # extract + validate without storing
+slack-huddle-mcp -v setup --auto           # add DEBUG logs on stderr
+```
+
+Reads `xoxc` from `~/Library/Application Support/Slack/Local Storage/leveldb/` (regex-scanned) and decrypts `xoxd` from the Cookies SQLite via the macOS Keychain (PBKDF2-SHA1 → AES-128-CBC, the standard Chromium scheme).
+
+The first run triggers a one-time macOS Keychain prompt asking permission to read `Slack Safe Storage`. Click **Always Allow**. After that, future runs are silent.
+
+### Option B — one-click browser bookmarklet
+
+```bash
+slack-huddle-mcp bookmarklet               # writes + opens helper page in your browser
+slack-huddle-mcp bookmarklet --no-open     # just write the helper file
+slack-huddle-mcp bookmarklet --print-only  # print the bookmarklet URL
+```
+
+Drag the link from the helper page to your bookmarks bar. Click it from any tab on `app.slack.com`, paste your `xoxd` cookie when prompted, and a complete `slack-huddle-mcp setup --xoxc ... --xoxd ...` command lands on your clipboard.
+
+(JavaScript cannot read `xoxd` directly because it's HttpOnly — that's the one manual step in this path.)
+
+### Option C — manual (works everywhere)
+
 Slack tokens come out of the browser. They are not part of any developer-facing API.
 
-### `xoxc` (user-session token, form body)
+#### `xoxc` (user-session token, form body)
 
 1. Open Slack in your browser (`https://app.slack.com`) and log in.
 2. Open DevTools → Console.
