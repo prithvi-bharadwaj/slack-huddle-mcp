@@ -49,9 +49,9 @@ dev = [
 slack-huddle-mcp = "slack_huddle.cli:cli"
 
 [project.urls]
-Homepage = "https://github.com/prithvi/slack-huddle-mcp"
-Repository = "https://github.com/prithvi/slack-huddle-mcp"
-Issues = "https://github.com/prithvi/slack-huddle-mcp/issues"
+Homepage = "https://github.com/prithvi-bharadwaj/slack-huddle-mcp"
+Repository = "https://github.com/prithvi-bharadwaj/slack-huddle-mcp"
+Issues = "https://github.com/prithvi-bharadwaj/slack-huddle-mcp/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/slack_huddle"]
