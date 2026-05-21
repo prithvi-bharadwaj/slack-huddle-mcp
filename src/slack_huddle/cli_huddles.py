@@ -27,15 +27,20 @@ logger = logging.getLogger(__name__)
 
 
 def _resolve_to_canvas(client: SlackHuddleClient, ident: str) -> str:
-    if ident.startswith("H"):
-        for huddle in client.huddles_history(limit=200):
-            if huddle.get("id") == ident:
-                canvas_id = huddle.get("transcript_file_id")
-                if isinstance(canvas_id, str) and canvas_id:
-                    return canvas_id
-                raise click.ClickException(f"huddle {ident} has no canvas id")
-        raise click.ClickException(f"huddle {ident} not found in recent history")
-    return ident
+    # File IDs (canvas / transcript) start with F. Everything else (H, R, ...)
+    # is treated as a huddle ID and looked up in huddles.history.
+    if ident.startswith("F"):
+        return ident
+    for huddle in client.huddles_history(limit=200):
+        if huddle.get("id") == ident:
+            canvas_id = huddle.get("transcript_file_id")
+            if isinstance(canvas_id, str) and canvas_id:
+                return canvas_id
+            raise click.ClickException(
+                f"huddle {ident} has no canvas yet (Slack typically generates "
+                "the AI summary within a few minutes after the huddle ends)"
+            )
+    raise click.ClickException(f"huddle {ident} not found in recent history")
 
 
 def _resolve_to_transcript_file(client: SlackHuddleClient, ident: str) -> str:
@@ -140,20 +145,39 @@ def smoke_test_cmd(workspace: str | None) -> None:
 
         click.echo("[2/4] huddles.history ...")
         try:
-            huddles = client.huddles_history(limit=5)
+            huddles = client.huddles_history(limit=10)
         except SlackApiError as exc:
             click.echo(f"  FAIL: {exc.error}")
             sys.exit(1)
         if not huddles:
             click.echo("  WARN no huddles found; cannot complete transcript check.")
             sys.exit(0)
-        first = huddles[0]
-        click.echo(f"  OK {len(huddles)} huddles; first={first.get('id', '?')}")
+        click.echo(f"  OK {len(huddles)} huddles; first={huddles[0].get('id', '?')}")
 
-        canvas_id = first.get("transcript_file_id")
-        if not isinstance(canvas_id, str) or not canvas_id:
-            click.echo("  FAIL first huddle is missing transcript_file_id")
-            sys.exit(1)
+        # Recent huddles may not have an AI canvas yet (Slack generates it
+        # asynchronously). Walk forward until we find one that does.
+        target_index = None
+        canvas_id = ""
+        for i, h in enumerate(huddles):
+            cid = h.get("transcript_file_id")
+            if isinstance(cid, str) and cid:
+                target_index = i
+                canvas_id = cid
+                break
+
+        if target_index is None:
+            click.echo(
+                f"  WARN none of the {len(huddles)} recent huddles have a canvas "
+                "yet (Slack hasn't generated the AI summary). Wait a few minutes "
+                "and re-run, or test against an older huddle."
+            )
+            sys.exit(0)
+
+        if target_index > 0:
+            click.echo(
+                f"  (skipped {target_index} recent huddle(s) without an AI "
+                f"canvas; testing {huddles[target_index].get('id', '?')})"
+            )
 
         click.echo(f"[3/4] resolve canvas {canvas_id} -> raw transcript file ...")
         try:

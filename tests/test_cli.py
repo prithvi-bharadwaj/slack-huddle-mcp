@@ -152,6 +152,101 @@ def test_get_huddle_by_id(
 
 
 @respx.mock
+def test_get_huddle_with_r_prefix_id(
+    canvas_payload: dict[str, Any],
+    transcript_payload: dict[str, Any],
+) -> None:
+    """Slack returns huddle IDs starting with `R` (legacy 'room' prefix)."""
+    huddles_payload = {
+        "ok": True,
+        "huddles": [
+            {
+                "id": "R0B5CTD7FN2",
+                "date_start": 1731499200,
+                "date_end": 1731500700,
+                "channels": ["C00000001"],
+                "participant_history": [{"user_id": "U00000001"}],
+                "transcript_file_id": "F0CANVAS0001",
+                "huddle_link": "https://example.slack.com/huddle/T01/R0B5CTD7FN2",
+            }
+        ],
+    }
+    respx.post(f"{BASE_URL}/huddles.history").mock(
+        return_value=httpx.Response(200, json=huddles_payload)
+    )
+    respx.post(f"{BASE_URL}/files.info").mock(
+        side_effect=[
+            httpx.Response(200, json=canvas_payload),
+            httpx.Response(200, json=transcript_payload),
+        ]
+    )
+    result = CliRunner().invoke(cli, ["get", "R0B5CTD7FN2"])
+    assert result.exit_code == 0, result.output
+    assert "Lorem ipsum" in result.output
+
+
+@respx.mock
+def test_smoke_test_skips_huddles_without_canvas(
+    auth_payload: dict[str, Any],
+    canvas_payload: dict[str, Any],
+    transcript_payload: dict[str, Any],
+) -> None:
+    """Most recent huddle may not have a canvas yet; smoke-test should walk forward."""
+    huddles_payload = {
+        "ok": True,
+        "huddles": [
+            {"id": "R0NO_CANVAS_01", "date_start": 0, "date_end": 0, "channels": []},
+            {
+                "id": "R0HAS_CANVAS_2",
+                "date_start": 0,
+                "date_end": 0,
+                "channels": ["C1"],
+                "transcript_file_id": "F0CANVAS0001",
+            },
+        ],
+    }
+    respx.post(f"{BASE_URL}/auth.test").mock(
+        return_value=httpx.Response(200, json=auth_payload)
+    )
+    respx.post(f"{BASE_URL}/huddles.history").mock(
+        return_value=httpx.Response(200, json=huddles_payload)
+    )
+    respx.post(f"{BASE_URL}/files.info").mock(
+        side_effect=[
+            httpx.Response(200, json=canvas_payload),
+            httpx.Response(200, json=transcript_payload),
+        ]
+    )
+    result = CliRunner().invoke(cli, ["smoke-test"])
+    assert result.exit_code == 0, result.output
+    assert "skipped 1 recent huddle(s) without an AI canvas" in result.output
+    assert "smoke-test: OK" in result.output
+
+
+@respx.mock
+def test_smoke_test_warns_when_no_huddle_has_canvas(
+    auth_payload: dict[str, Any],
+) -> None:
+    huddles_payload = {
+        "ok": True,
+        "huddles": [
+            {"id": "R0NO_CANVAS_01", "date_start": 0, "date_end": 0, "channels": []},
+            {"id": "R0NO_CANVAS_02", "date_start": 0, "date_end": 0, "channels": []},
+        ],
+    }
+    respx.post(f"{BASE_URL}/auth.test").mock(
+        return_value=httpx.Response(200, json=auth_payload)
+    )
+    respx.post(f"{BASE_URL}/huddles.history").mock(
+        return_value=httpx.Response(200, json=huddles_payload)
+    )
+    result = CliRunner().invoke(cli, ["smoke-test"])
+    assert result.exit_code == 0, result.output
+    assert "none of the" in result.output
+    assert "have a canvas yet" in result.output
+
+
+@respx.mock
 def test_smoke_test_passes(
     auth_payload: dict[str, Any],
     huddles_history_payload: dict[str, Any],
