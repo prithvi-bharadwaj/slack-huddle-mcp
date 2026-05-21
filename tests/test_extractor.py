@@ -109,6 +109,53 @@ def test_decrypt_chromium_cookie_roundtrip() -> None:
     assert _decrypt_chromium_cookie(encrypted, passphrase) == plaintext
 
 
+def test_decrypt_strips_domain_bind_prefix() -> None:
+    """Newer Chromium prefixes plaintext with a host-derived MAC before encryption."""
+    cookie_value = "xoxd-binding-test-=="
+    # 32 high-bit bytes — guaranteed-invalid UTF-8 so the direct decode path fails
+    # and the marker scan kicks in.
+    binary_prefix = bytes([0xFF, 0xFE, 0xFD, 0xFC] * 8)
+    plaintext_bytes = binary_prefix + cookie_value.encode("utf-8")
+    passphrase = "with-prefix"
+
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA1(),
+        length=KEY_LENGTH,
+        salt=PBKDF2_SALT,
+        iterations=PBKDF2_ITERATIONS_MAC,
+    )
+    key = kdf.derive(passphrase.encode("utf-8"))
+    pad_len = 16 - (len(plaintext_bytes) % 16)
+    padded = plaintext_bytes + bytes([pad_len] * pad_len)
+    cipher = Cipher(algorithms.AES(key), modes.CBC(AES_IV))
+    encryptor = cipher.encryptor()
+    encrypted = b"v10" + encryptor.update(padded) + encryptor.finalize()
+
+    assert _decrypt_chromium_cookie(encrypted, passphrase) == cookie_value
+
+
+def test_decrypt_raises_when_no_xoxd_marker_found() -> None:
+    """If decrypted bytes contain neither valid utf-8 nor xoxd-, surface a clear error."""
+    binary_garbage = bytes([0xFF, 0xFE, 0xFD, 0xFC] * 12)
+    passphrase = "no-marker"
+
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA1(),
+        length=KEY_LENGTH,
+        salt=PBKDF2_SALT,
+        iterations=PBKDF2_ITERATIONS_MAC,
+    )
+    key = kdf.derive(passphrase.encode("utf-8"))
+    pad_len = 16 - (len(binary_garbage) % 16)
+    padded = binary_garbage + bytes([pad_len] * pad_len)
+    cipher = Cipher(algorithms.AES(key), modes.CBC(AES_IV))
+    encryptor = cipher.encryptor()
+    encrypted = b"v10" + encryptor.update(padded) + encryptor.finalize()
+
+    with pytest.raises(ExtractorError, match="no xoxd-/xoxs- marker"):
+        _decrypt_chromium_cookie(encrypted, passphrase)
+
+
 def test_decrypt_returns_plain_when_not_v10() -> None:
     assert _decrypt_chromium_cookie(b"plain-cookie-value", "anything") == "plain-cookie-value"
 

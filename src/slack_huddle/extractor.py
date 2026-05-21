@@ -216,7 +216,32 @@ def _decrypt_chromium_cookie(encrypted: bytes, passphrase: str) -> str:
         raise ExtractorError(f"invalid PKCS7 pad length: {pad_len}")
     plaintext = padded[:-pad_len]
 
+    # Older Chromium: plaintext == cookie_value directly.
     try:
         return plaintext.decode("utf-8")
-    except UnicodeDecodeError as exc:
-        raise ExtractorError("decrypted cookie is not valid utf-8") from exc
+    except UnicodeDecodeError:
+        pass
+
+    # Newer Chromium (and recent Electron) binds the cookie to its domain by
+    # prefixing the plaintext with a host-derived value (hash/MAC) before
+    # encrypting. Slack's `d` cookie value always starts with `xoxd-`; scan
+    # for that marker and return from there.
+    for marker in (b"xoxd-", b"xoxs-"):
+        idx = plaintext.find(marker)
+        if idx >= 0:
+            logger.debug(
+                "auto-extract: stripped %d-byte domain-bind prefix before %s",
+                idx,
+                marker.decode(),
+            )
+            try:
+                return plaintext[idx:].decode("utf-8")
+            except UnicodeDecodeError as exc:
+                raise ExtractorError(
+                    f"found {marker.decode()} marker but tail isn't utf-8"
+                ) from exc
+
+    raise ExtractorError(
+        "decrypted cookie is not valid utf-8 and no xoxd-/xoxs- marker found. "
+        f"first 16 bytes (hex): {plaintext[:16].hex()}"
+    )
