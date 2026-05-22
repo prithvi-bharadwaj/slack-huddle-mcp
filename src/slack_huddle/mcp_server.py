@@ -251,10 +251,25 @@ __all__ = [
 ]
 
 
-def main() -> None:
-    """Entrypoint for ``python -m slack_huddle.mcp_server``."""
+def main(
+    *,
+    transport: str = "stdio",
+    host: str = "127.0.0.1",
+    port: int = 8765,
+) -> None:
+    """Entrypoint for ``python -m slack_huddle.mcp_server``.
+
+    ``transport`` can be ``stdio`` (default, for Claude Code / Desktop) or
+    ``http`` (streamable HTTP, for Claude.ai/Cowork via a public tunnel).
+    """
     logging.basicConfig(level=logging.WARNING)
-    mcp.run()
+    if transport == "stdio":
+        mcp.run()
+    elif transport == "http":
+        logger.info("starting streamable HTTP server on %s:%d", host, port)
+        mcp.run(transport="http", host=host, port=port)
+    else:
+        raise ValueError(f"unsupported transport: {transport!r}")
 
 
 if __name__ == "__main__":

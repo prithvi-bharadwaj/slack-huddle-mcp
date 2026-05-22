@@ -23,11 +23,31 @@ def cli(verbose: bool) -> None:
 
 
 @cli.command()
-def serve() -> None:
-    """Run the FastMCP server over stdio (use this from your MCP client config)."""
+@click.option(
+    "--http",
+    "use_http",
+    is_flag=True,
+    help="Serve over streamable HTTP (for claude.ai/Cowork via a public tunnel).",
+)
+@click.option("--host", default="127.0.0.1", help="HTTP bind host (default 127.0.0.1).")
+@click.option("--port", default=8765, type=int, help="HTTP bind port (default 8765).")
+def serve(use_http: bool, host: str, port: int) -> None:
+    """Run the FastMCP server.
+
+    Default: stdio transport (for Claude Code / Claude Desktop, configured via
+    ``claude mcp add``).
+
+    With ``--http``: streamable HTTP transport on ``<host>:<port>/mcp``. Combine
+    with a tunnel (cloudflared/ngrok) to make it reachable from Claude.ai's
+    cloud for use as a Cowork custom connector. WARNING: no built-in auth in
+    this mode — keep the tunnel URL private and don't leave it running.
+    """
     from slack_huddle.mcp_server import main as _main
 
-    _main()
+    if use_http:
+        _main(transport="http", host=host, port=port)
+    else:
+        _main()
 
 
 cli.add_command(setup)
