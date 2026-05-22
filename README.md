@@ -31,7 +31,10 @@ There's an undocumented endpoint the Slack web client itself uses. This MCP serv
 ## 2. Quickstart
 
 ```bash
-pipx install slack-huddle-mcp        # or: pip install slack-huddle-mcp
+# until PyPI publish:
+pipx install git+https://github.com/prithvi-bharadwaj/slack-huddle-mcp.git
+# (once published: pipx install slack-huddle-mcp)
+
 slack-huddle-mcp setup --auto        # macOS: auto-extract from the Slack desktop app
 slack-huddle-mcp smoke-test          # end-to-end check on your latest huddle
 ```
