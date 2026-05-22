@@ -189,7 +189,15 @@ The `xoxd` lifetime is about a year.
 
 All clients use the same command. Pick whichever fits your setup.
 
-### Claude Code / Claude Cowork (`~/.claude.json`)
+### Claude Code (CLI) — easiest, local stdio
+
+```bash
+claude mcp add slack-huddle -s user -- "$(which slack-huddle-mcp)" serve
+```
+
+Then in any Claude Code session, run `/mcp` to confirm it's connected.
+
+### Claude Desktop (`~/Library/Application Support/Claude/claude_desktop_config.json`)
 
 ```json
 {
@@ -201,6 +209,8 @@ All clients use the same command. Pick whichever fits your setup.
   }
 }
 ```
+
+If your MCP client doesn't see your shell's PATH (common with GUI launchers), use the absolute path: `~/.local/bin/slack-huddle-mcp` (or wherever `which slack-huddle-mcp` shows).
 
 ### Cursor (`.cursor/mcp.json`)
 
@@ -215,9 +225,84 @@ All clients use the same command. Pick whichever fits your setup.
 }
 ```
 
-### Cline / Continue / Zed
+### Claude.ai web / **Claude Cowork** — needs a public tunnel
 
-Same as above — point the command at `slack-huddle-mcp serve`. If your MCP client doesn't see your shell's PATH (common with GUI launchers), use the absolute path: `~/.local/bin/slack-huddle-mcp`.
+Claude Cowork can't run local stdio MCPs — it connects to remote servers from Anthropic's cloud. You expose your local MCP as HTTPS via a tunnel.
+
+```bash
+# Terminal 1: start the MCP in HTTP mode with a stable token
+export MCP_AUTH_TOKEN="$(openssl rand -hex 32)"   # save this, you'll need it
+slack-huddle-mcp serve --http --port 8765
+
+# Terminal 2: expose port 8765 publicly
+ngrok http 8765                                   # copy the https://...ngrok-free.dev URL
+
+# Build the connector URL:
+#   https://<ngrok-host>/mcp/$MCP_AUTH_TOKEN
+```
+
+In claude.ai (Pro / Max plan):
+
+1. Settings → **Connectors** → **+ Add custom connector**.
+2. **Name:** `slack-huddle`
+3. **Remote MCP server URL:** `https://<your-ngrok-host>/mcp/<your-token>`
+4. Leave Advanced settings empty.
+5. Click **Add**. Cowork will probe the URL and surface the 4 tools.
+6. In any conversation: `+` button → Connectors → enable `slack-huddle`.
+
+**Security:**
+
+- The token is part of the URL. Requests to `/mcp` (or any other path) return 404. Only `/mcp/<exact-token>` answers.
+- Don't paste the URL into shared chats, screenshots, or commit it. Anyone who has it can read your Slack huddles for as long as your tokens are valid.
+- The ngrok tunnel dies when you close the terminal. On the free tier the host changes each restart — re-add to Cowork. Pay for a fixed subdomain (~$8/mo) if you want persistence.
+- This is **single-tenant on purpose**: each user runs their own MCP with their own Slack tokens. No multi-tenant data isolation needed because nobody else's tokens are involved.
+
+### "Just do this for me" — agent prompt for end-to-end setup
+
+If you have Claude Code (CLI) installed, give an agent this prompt and it'll handle everything except the click-in-Cowork step at the end:
+
+```
+You're setting up the slack-huddle MCP for use in Claude Cowork on macOS.
+
+Do these steps without asking for confirmation in between:
+
+1. Verify prerequisites. Stop with a clear error if any are missing:
+   - macOS (uname -s == Darwin)
+   - pipx installed (`command -v pipx`)
+   - ngrok installed and authed (`ngrok config check`)
+   - Slack desktop app installed and logged in
+
+2. Install: pipx install git+https://github.com/prithvi-bharadwaj/slack-huddle-mcp.git
+   (skip if already installed; check `slack-huddle-mcp --version` first)
+
+3. Run `slack-huddle-mcp setup --auto`. If macOS prompts for Keychain
+   access to "Slack Safe Storage", tell me to click "Always Allow" and
+   wait — re-run after I confirm.
+
+4. Verify with `slack-huddle-mcp smoke-test`. If it fails, stop and report.
+
+5. Generate a token: export MCP_AUTH_TOKEN="$(openssl rand -hex 32)"
+   Save the value to ~/.config/slack-huddle-mcp-token.txt (chmod 600).
+
+6. Start the MCP HTTP server in the background:
+   nohup env MCP_AUTH_TOKEN="$MCP_AUTH_TOKEN" \
+     slack-huddle-mcp serve --http --port 8765 \
+     > /tmp/slack-huddle-mcp.log 2>&1 &
+   Verify it's listening with curl on the local URL.
+
+7. Start ngrok in the background:
+   nohup ngrok http 8765 --log /tmp/ngrok.log --log-format json \
+     > /dev/null 2>&1 &
+   Wait until http://127.0.0.1:4040/api/tunnels returns a public_url.
+
+8. Print:
+     CONNECTOR URL: https://<ngrok-host>/mcp/<token>
+     Add it in claude.ai → Settings → Connectors → + Add custom connector.
+     Leave Advanced settings empty. Click Add. Done.
+
+9. Also print the PIDs of the MCP and ngrok processes, and the exact
+   commands to stop them later.
+```
 
 ### Tools your agent will see
 

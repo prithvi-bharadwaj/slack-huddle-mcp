@@ -256,18 +256,25 @@ def main(
     transport: str = "stdio",
     host: str = "127.0.0.1",
     port: int = 8765,
+    http_path: str = "/mcp",
 ) -> None:
     """Entrypoint for ``python -m slack_huddle.mcp_server``.
 
     ``transport`` can be ``stdio`` (default, for Claude Code / Desktop) or
     ``http`` (streamable HTTP, for Claude.ai/Cowork via a public tunnel).
+
+    ``http_path`` lets the caller move the MCP endpoint to a secret URL like
+    ``/mcp/<random-token>``. Requests to any other path return 404 — this is
+    the simplest auth model that works with Cowork's connector UI (which
+    doesn't expose custom-header configuration). Treat the path as a
+    bearer token: anyone who can guess it can call your tools.
     """
     logging.basicConfig(level=logging.WARNING)
     if transport == "stdio":
         mcp.run()
     elif transport == "http":
-        logger.info("starting streamable HTTP server on %s:%d", host, port)
-        mcp.run(transport="http", host=host, port=port)
+        logger.info("starting streamable HTTP server on %s:%d%s", host, port, http_path)
+        mcp.run(transport="http", host=host, port=port, path=http_path)
     else:
         raise ValueError(f"unsupported transport: {transport!r}")
 

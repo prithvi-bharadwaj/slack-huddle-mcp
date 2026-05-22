@@ -31,23 +31,55 @@ def cli(verbose: bool) -> None:
 )
 @click.option("--host", default="127.0.0.1", help="HTTP bind host (default 127.0.0.1).")
 @click.option("--port", default=8765, type=int, help="HTTP bind port (default 8765).")
-def serve(use_http: bool, host: str, port: int) -> None:
+@click.option(
+    "--auth-token",
+    envvar="MCP_AUTH_TOKEN",
+    default=None,
+    help="Secret URL token for HTTP mode. Auto-generated if not set. "
+    "Also reads from MCP_AUTH_TOKEN env var.",
+)
+def serve(
+    use_http: bool, host: str, port: int, auth_token: str | None
+) -> None:
     """Run the FastMCP server.
 
     Default: stdio transport (for Claude Code / Claude Desktop, configured via
     ``claude mcp add``).
 
-    With ``--http``: streamable HTTP transport on ``<host>:<port>/mcp``. Combine
-    with a tunnel (cloudflared/ngrok) to make it reachable from Claude.ai's
-    cloud for use as a Cowork custom connector. WARNING: no built-in auth in
-    this mode — keep the tunnel URL private and don't leave it running.
+    With ``--http``: streamable HTTP transport at ``<host>:<port>/mcp/<token>``.
+    Combine with a tunnel (ngrok/cloudflared) to make it reachable from
+    Claude.ai's cloud for use as a Cowork custom connector.
+
+    The token is part of the URL — requests to any other path return 404. Set
+    ``MCP_AUTH_TOKEN`` or pass ``--auth-token`` to make it stable across
+    restarts; otherwise a fresh one is generated each run.
     """
     from slack_huddle.mcp_server import main as _main
 
-    if use_http:
-        _main(transport="http", host=host, port=port)
-    else:
+    if not use_http:
         _main()
+        return
+
+    import secrets
+
+    if not auth_token:
+        auth_token = secrets.token_urlsafe(32)
+        click.echo(
+            f"⚠ No --auth-token / MCP_AUTH_TOKEN set; generated one for this run:\n"
+            f"    {auth_token}\n"
+            f"  Set MCP_AUTH_TOKEN=... to keep the URL stable across restarts.",
+            err=True,
+        )
+
+    http_path = f"/mcp/{auth_token}"
+    click.echo(
+        f"\nLocal URL:  http://{host}:{port}{http_path}\n"
+        f"Public URL: https://<your-tunnel>{http_path}\n"
+        f"            (replace <your-tunnel> with your ngrok / cloudflared host)\n"
+        f"            Paste the Public URL into Cowork → Settings → Connectors.\n",
+        err=True,
+    )
+    _main(transport="http", host=host, port=port, http_path=http_path)
 
 
 cli.add_command(setup)

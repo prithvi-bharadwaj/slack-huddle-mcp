@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "slack-huddle-mcp"
-version = "0.2.0"
+version = "0.3.0"
 description = "MCP server that exposes Slack AI-generated huddle transcripts to LLM agents"
 readme = "README.md"
 license = { text = "MIT" }
