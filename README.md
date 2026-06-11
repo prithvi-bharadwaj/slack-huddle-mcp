@@ -51,6 +51,19 @@ After setup, paste the MCP config snippet that `setup` prints into your MCP clie
 
 > *"Summarize today's standup from #standups in three bullets and list any blockers by owner."*
 
+### Everyday commands (once set up)
+
+```bash
+slack-huddle-mcp status              # are my tokens still valid?
+slack-huddle-mcp list -n 10          # 10 most recent huddles (id, time, duration)
+slack-huddle-mcp list -c C0XXXXXXX   # scope to one channel
+slack-huddle-mcp get <huddle_id>                    # markdown transcript
+slack-huddle-mcp get <huddle_id> --format summary   # Slack's AI summary canvas
+slack-huddle-mcp smoke-test          # re-verify the whole pipeline
+```
+
+If `status` ever shows `AUTH_FAILED`, you logged out of Slack and the `xoxc` rotated — just re-run `slack-huddle-mcp setup --auto`.
+
 ## 3. Use cases
 
 - **Daily-standup briefing** — pulled into your morning agent flow.
