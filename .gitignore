@@ -57,3 +57,4 @@ scratch/
 
 # Claude Code session state
 .claude/
+skill-runs.jsonl
