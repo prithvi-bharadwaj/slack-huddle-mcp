@@ -217,7 +217,23 @@ def get_huddle_summary(
             assert huddle_id is not None
             canvas_id = _find_canvas_id(client, huddle_id)
         canvas = client.fetch_huddle_summary_canvas(canvas_id)
-        return extract_summary_from_canvas(canvas)
+        result = extract_summary_from_canvas(canvas)
+        is_short_title = (
+            result["summary_md"].strip().startswith(":headphones:")
+            and len(result["summary_md"]) < 300
+        ) or (len(result["summary_md"]) < 100 and canvas.get("url_private_download"))
+        if is_short_title:
+            try:
+                html = client.fetch_canvas_html(canvas)
+                if html and len(html) > 1000:
+                    from slack_huddle.parser import canvas_html_to_markdown
+
+                    md = canvas_html_to_markdown(html)
+                    if len(md) > 500:
+                        result["summary_md"] = md
+            except Exception:
+                logger.debug("canvas HTML fallback failed for %s", canvas_id, exc_info=True)
+        return result
 
 
 @mcp.tool()

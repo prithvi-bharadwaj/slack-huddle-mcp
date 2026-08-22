@@ -115,15 +115,55 @@ def format_lines(
     ]
 
 
+def canvas_html_to_markdown(html: str) -> str:
+    """Convert Slack Quip canvas HTML to markdown-ish plain text.
+
+    Slack renders huddle canvases as HTML (``files.slack.com/.../canvas``).
+    This strips tags while preserving headings and line breaks, without
+    external dependencies (stdlib only).
+    """
+    import re
+
+    # preserve block boundaries
+    html = re.sub(r"<br\s*/?>", "\n", html, flags=re.I)
+    html = re.sub(r"</h1>", "\n\n", html, flags=re.I)
+    html = re.sub(r"</h2>", "\n\n", html, flags=re.I)
+    html = re.sub(r"</p>", "\n\n", html, flags=re.I)
+    html = re.sub(r"</li>", "\n", html, flags=re.I)
+    html = re.sub(r"</ul>", "\n", html, flags=re.I)
+    html = re.sub(r"</ol>", "\n", html, flags=re.I)
+    # strip remaining tags
+    html = re.sub(r"<[^>]+>", "", html)
+    # decode entities
+    html = html.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&").replace("&quot;", '"').replace("&#39;", "'")
+    # collapse whitespace
+    html = re.sub(r"\n{3,}", "\n\n", html)
+    html = re.sub(r"[ \t]{2,}", " ", html)
+    return html.strip()
+
+
 def extract_summary_from_canvas(canvas: Mapping[str, Any]) -> dict[str, Any]:
     """Extract a structured summary from a huddle's AI-summary canvas file dict.
 
     Returns ``{summary_md, action_items, attendees, canvas_url}``. Missing fields
     fall back to empty strings/lists.
+
+    Note: ``files.info`` for canvas files no longer returns ``plain_text`` with
+    the AI summary (only ``title``). Callers that need the full summary should
+    fetch the canvas HTML via ``SlackHuddleClient.fetch_canvas_html`` and pass
+    it through ``canvas_html_to_markdown`` as a fallback.
     """
     summary_md = ""
-    if isinstance(canvas.get("plain_text"), str):
-        summary_md = canvas["plain_text"]
+    if isinstance(canvas.get("plain_text"), str) and canvas["plain_text"].strip():
+        # files.info used to return the full summary here; keep for back-compat
+        # and for fixtures. Real prod canvases now only have title.
+        plain = canvas["plain_text"].strip()
+        if len(plain) > 300 or not canvas.get("title") or plain != canvas.get("title"):
+            summary_md = plain
+        elif isinstance(canvas.get("preview"), str) and canvas["preview"].strip():
+            summary_md = canvas["preview"].strip()
+        else:
+            summary_md = plain
     elif isinstance(canvas.get("preview"), str):
         summary_md = canvas["preview"]
     elif isinstance(canvas.get("title"), str):

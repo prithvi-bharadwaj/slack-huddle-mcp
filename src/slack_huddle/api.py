@@ -248,6 +248,32 @@ class SlackHuddleClient:
             )
         return canvas
 
+    def fetch_canvas_html(self, canvas: dict[str, Any]) -> str | None:
+        """Fetch the rendered HTML body of a huddle canvas.
+
+        ``files.info`` for canvas files (``application/vnd.slack-docs``) no longer
+        returns ``plain_text`` with the summary — it only returns ``title``.
+        The real summary lives in the HTML at ``url_private_download`` (Quip canvas).
+        This is the same endpoint the Slack web client uses to render the canvas.
+
+        Returns the raw HTML on success, or None on failure (caller should
+        fallback to title). Never raises on HTTP errors — the summary is
+        best-effort.
+        """
+        url = canvas.get("url_private_download") or canvas.get("url_private")
+        if not isinstance(url, str) or not url:
+            return None
+        try:
+            headers = {"User-Agent": DEFAULT_USER_AGENT}
+            response = self._client.get(
+                url, headers=headers, cookies={"d": self._xoxd}, follow_redirects=True
+            )
+            if response.status_code == 200 and response.text:
+                return response.text
+        except Exception:
+            logger.debug("failed to fetch canvas HTML from %s", url, exc_info=True)
+        return None
+
 
 def _sleep_backoff(attempt: int) -> None:
     """Exponential backoff capped at 8 seconds."""
