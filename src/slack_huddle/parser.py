@@ -124,6 +124,9 @@ def canvas_html_to_markdown(html: str) -> str:
     """
     import re
 
+    # strip script/style blocks first to avoid leaking JS/CSS into summary
+    html = re.sub(r"<script[^>]*>.*?</script>", "", html, flags=re.I | re.S)
+    html = re.sub(r"<style[^>]*>.*?</style>", "", html, flags=re.I | re.S)
     # preserve block boundaries
     html = re.sub(r"<br\s*/?>", "\n", html, flags=re.I)
     html = re.sub(r"</h1>", "\n\n", html, flags=re.I)
