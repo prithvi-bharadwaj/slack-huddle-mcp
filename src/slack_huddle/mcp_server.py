@@ -218,19 +218,20 @@ def get_huddle_summary(
             canvas_id = _find_canvas_id(client, huddle_id)
         canvas = client.fetch_huddle_summary_canvas(canvas_id)
         result = extract_summary_from_canvas(canvas)
-        is_short_title = (
-            result["summary_md"].strip().startswith(":headphones:")
-            and len(result["summary_md"]) < 300
-        ) or (len(result["summary_md"]) < 100 and canvas.get("url_private_download"))
-        if is_short_title:
+        # single trigger — files.info returning title-length text means a
+        # metadata-only canvas; fetch the rendered HTML instead
+        # (fetch_canvas_html returns None when there's no URL). Replaces
+        # shorter text only.
+        if len(result["summary_md"]) < 500:
             try:
                 html = client.fetch_canvas_html(canvas)
-                if html and len(html) > 1000:
+                if html:
                     from slack_huddle.parser import canvas_html_to_markdown
 
                     md = canvas_html_to_markdown(html)
-                    if len(md) > 500:
-                        result["summary_md"] = md
+                    if len(md) > len(result["summary_md"]):
+                        # re-extract so attendees/action_items parse from the full md
+                        result = extract_summary_from_canvas(canvas, summary_md_override=md)
             except Exception:
                 logger.debug("canvas HTML fallback failed for %s", canvas_id, exc_info=True)
         return result

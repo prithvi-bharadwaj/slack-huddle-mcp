@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -122,8 +123,6 @@ def canvas_html_to_markdown(html: str) -> str:
     This strips tags while preserving headings and line breaks, without
     external dependencies (stdlib only).
     """
-    import re
-
     # strip script/style blocks first to avoid leaking JS/CSS into summary
     html = re.sub(r"<script[^>]*>.*?</script>", "", html, flags=re.I | re.S)
     html = re.sub(r"<style[^>]*>.*?</style>", "", html, flags=re.I | re.S)
@@ -138,14 +137,45 @@ def canvas_html_to_markdown(html: str) -> str:
     # strip remaining tags
     html = re.sub(r"<[^>]+>", "", html)
     # decode entities
-    html = html.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&").replace("&quot;", '"').replace("&#39;", "'")
+    html = (
+        html.replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&amp;", "&")
+        .replace("&quot;", '"')
+        .replace("&#39;", "'")
+    )
     # collapse whitespace
     html = re.sub(r"\n{3,}", "\n\n", html)
     html = re.sub(r"[ \t]{2,}", " ", html)
     return html.strip()
 
 
-def extract_summary_from_canvas(canvas: Mapping[str, Any]) -> dict[str, Any]:
+def _extract_sections(md: str) -> dict[str, list[str]]:
+    """Split a canvas summary into ``{section_name: [lines]}`` by emoji header.
+
+    Huddle canvases use headers like ``:handshake: Participantes`` and
+    ``:white_check_mark: Itens de ação``. Unknown sections are ignored.
+    """
+    sections: dict[str, list[str]] = {}
+    current = ""
+    for line in md.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        match = re.match(r":\w+:?\s+(.+)$", stripped)
+        if match:
+            current = match.group(1).strip().lower()
+            sections.setdefault(current, [])
+        elif current:
+            sections[current].append(stripped)
+    return sections
+
+
+def extract_summary_from_canvas(
+    canvas: Mapping[str, Any],
+    *,
+    summary_md_override: str | None = None,
+) -> dict[str, Any]:
     """Extract a structured summary from a huddle's AI-summary canvas file dict.
 
     Returns ``{summary_md, action_items, attendees, canvas_url}``. Missing fields
@@ -153,27 +183,60 @@ def extract_summary_from_canvas(canvas: Mapping[str, Any]) -> dict[str, Any]:
 
     Note: ``files.info`` for canvas files no longer returns ``plain_text`` with
     the AI summary (only ``title``). Callers that need the full summary should
-    fetch the canvas HTML via ``SlackHuddleClient.fetch_canvas_html`` and pass
-    it through ``canvas_html_to_markdown`` as a fallback.
+    fetch the canvas HTML via ``SlackHuddleClient.fetch_canvas_html``, convert it
+    with ``canvas_html_to_markdown``, and pass it as ``summary_md_override`` —
+    structured sections are parsed from it like any other summary source.
     """
     summary_md = ""
-    if isinstance(canvas.get("plain_text"), str) and canvas["plain_text"].strip():
-        # files.info used to return the full summary here; keep for back-compat
-        # and for fixtures. Real prod canvases now only have title.
+    if summary_md_override:
+        summary_md = summary_md_override
+    elif isinstance(canvas.get("plain_text"), str) and canvas["plain_text"].strip():
+        # files.info used to return the full summary here. Real prod canvases
+        # now only carry the title in plain_text — treat that as metadata-only.
         plain = canvas["plain_text"].strip()
-        if len(plain) > 300 or not canvas.get("title") or plain != canvas.get("title"):
-            summary_md = plain
-        elif isinstance(canvas.get("preview"), str) and canvas["preview"].strip():
-            summary_md = canvas["preview"].strip()
-        else:
+        if plain != canvas.get("title"):
             summary_md = plain
     elif isinstance(canvas.get("preview"), str):
         summary_md = canvas["preview"]
     elif isinstance(canvas.get("title"), str):
         summary_md = canvas["title"]
 
+    # parse ":handshake: Participantes" / ":white_check_mark: Itens de ação"
+    # sections from the rendered markdown; upgrade to users.info lookup
+    # if user IDs aren't enough
+    attendees: list[str] = []
+    raw_attendees = canvas.get("attendees")
+    if isinstance(raw_attendees, list):
+        attendees = [str(a) for a in raw_attendees if isinstance(a, (str, int))]
+    else:
+        attendee_lines = _extract_sections(summary_md).get("participantes") or _extract_sections(
+            summary_md
+        ).get("attendees", [])
+        if len(attendee_lines) == 1:
+            attendees = [
+                part.strip().lstrip("@").strip()
+                for part in re.split(r",| e ", attendee_lines[0])
+                if part.strip()
+            ]
+
     action_items: list[dict[str, str]] = []
-    blocks = canvas.get("canvas_template", {}) if isinstance(canvas.get("canvas_template"), dict) else {}
+    sections = _extract_sections(summary_md)
+    for header in ("itens de ação", "action items"):
+        for line in sections.get(header, []):
+            owner_match = re.match(r"@(\S+)", line)
+            ts_match = re.search(r"\[(\d{1,2}:\d{2}(?::\d{2})?)\]", line)
+            text = re.sub(r"\[(\d{1,2}:\d{2}(?::\d{2})?)\]", "", line).strip()
+            action_items.append(
+                {
+                    "owner": owner_match.group(1) if owner_match else "",
+                    "text": text,
+                    "timestamp": ts_match.group(1) if ts_match else "",
+                }
+            )
+
+    blocks = (
+        canvas.get("canvas_template", {}) if isinstance(canvas.get("canvas_template"), dict) else {}
+    )
     raw_actions = canvas.get("action_items")
     if not isinstance(raw_actions, list):
         raw_actions = blocks.get("action_items") if isinstance(blocks, dict) else None
@@ -188,11 +251,6 @@ def extract_summary_from_canvas(canvas: Mapping[str, Any]) -> dict[str, Any]:
                     "timestamp": str(item.get("timestamp") or item.get("time_ms") or ""),
                 }
             )
-
-    attendees: list[str] = []
-    raw_attendees = canvas.get("attendees")
-    if isinstance(raw_attendees, list):
-        attendees = [str(a) for a in raw_attendees if isinstance(a, (str, int))]
 
     canvas_url = ""
     for key in ("permalink", "url_private", "url_private_download"):
