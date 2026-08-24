@@ -234,3 +234,19 @@ def test_extract_sections_unknown_headers_ignored() -> None:
         "resumo",
         "itens de ação",
     }
+
+
+def test_extract_sections_stops_at_disclaimer_footer() -> None:
+    md = (
+        ":white_check_mark: Itens de ação\n"
+        "\n"
+        "@U1 fazer coisa [5:02]\n"
+        "\n"
+        "Esta ferramenta usa IA para gerar anotações e pode conter imprecisões.\n"
+        "\n"
+        "File ID: sf:F0BS5UYC0H3, File URL: https://example.slack.com/files/x\n"
+    )
+    sections = _extract_sections(md)
+    assert sections["itens de ação"] == ["@U1 fazer coisa [5:02]"]
+    assert not any("ferramenta" in line for lines in sections.values() for line in lines)
+    assert not any("File ID" in line for lines in sections.values() for line in lines)

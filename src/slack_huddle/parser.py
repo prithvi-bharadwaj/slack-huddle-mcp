@@ -158,10 +158,14 @@ def _extract_sections(md: str) -> dict[str, list[str]]:
     """
     sections: dict[str, list[str]] = {}
     current = ""
+    # AI-disclaimer footer always trails the last section; never part of it
+    footer_prefixes = ("esta ferramenta usa ia", "this tool uses ai")
     for line in md.splitlines():
         stripped = line.strip()
         if not stripped:
             continue
+        if stripped.lower().startswith(footer_prefixes) or stripped.startswith("File ID:"):
+            break
         match = re.match(r":\w+:?\s+(.+)$", stripped)
         if match:
             current = match.group(1).strip().lower()
