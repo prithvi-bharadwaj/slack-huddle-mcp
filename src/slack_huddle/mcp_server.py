@@ -143,12 +143,21 @@ def list_huddles(
                 if not canvas_id:
                     continue
                 try:
-                    huddle["raw_transcript_file_id"] = client.resolve_transcript_file_id(
-                        canvas_id
-                    )
+                    huddle["raw_transcript_file_id"] = client.resolve_transcript_file_id(canvas_id)
                 except Exception:
                     logger.debug("could not resolve transcript file id for %s", canvas_id)
                     huddle["raw_transcript_file_id"] = None
+        # best-effort: human channel names instead of raw C... IDs
+        seen_channels: dict[str, str | None] = {}
+        for huddle in shaped:
+            cid = huddle.get("channel_id") or ""
+            if not cid:
+                continue
+            if cid not in seen_channels:
+                seen_channels[cid] = client.channel_name(cid)
+            name = seen_channels[cid]
+            if name:
+                huddle["channel_name"] = f"#{name}"
         return shaped
 
 
@@ -217,7 +226,36 @@ def get_huddle_summary(
             assert huddle_id is not None
             canvas_id = _find_canvas_id(client, huddle_id)
         canvas = client.fetch_huddle_summary_canvas(canvas_id)
-        return extract_summary_from_canvas(canvas)
+        result = extract_summary_from_canvas(canvas)
+        # single trigger — files.info returning title-length text means a
+        # metadata-only canvas; fetch the rendered HTML instead
+        # (fetch_canvas_html returns None when there's no URL). Replaces
+        # shorter text only.
+        if len(result["summary_md"]) < 500:
+            try:
+                html = client.fetch_canvas_html(canvas)
+                if html:
+                    from slack_huddle.parser import canvas_html_to_markdown
+
+                    md = canvas_html_to_markdown(html)
+                    if len(md) > len(result["summary_md"]):
+                        # re-extract so attendees/action_items parse from the full md
+                        result = extract_summary_from_canvas(canvas, summary_md_override=md)
+            except Exception:
+                logger.debug("canvas HTML fallback failed for %s", canvas_id, exc_info=True)
+        # best-effort enrichment: display names for attendees, channel name in title
+        if result["attendees"]:
+            names = client.user_map(result["attendees"])
+            if names:
+                result["attendee_names"] = {uid: names.get(uid, uid) for uid in result["attendees"]}
+        channel_id = canvas.get("channels")
+        if isinstance(channel_id, list) and channel_id and isinstance(channel_id[0], str):
+            cname = client.channel_name(channel_id[0])
+            if cname and result["summary_md"].startswith(":headphones:"):
+                result["summary_md"] = result["summary_md"].replace(
+                    f"#{channel_id[0]}", f"#{cname}", 1
+                )
+        return result
 
 
 @mcp.tool()

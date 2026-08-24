@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Iterable
 from typing import Any
 
 import httpx
@@ -21,7 +22,9 @@ import httpx
 logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT = httpx.Timeout(30.0, connect=10.0)
-DEFAULT_USER_AGENT = "slack-huddle-mcp/0.3.0 (+https://github.com/prithvi-bharadwaj/slack-huddle-mcp)"
+DEFAULT_USER_AGENT = (
+    "slack-huddle-mcp/0.3.0 (+https://github.com/prithvi-bharadwaj/slack-huddle-mcp)"
+)
 MAX_RETRIES = 3
 
 
@@ -247,6 +250,60 @@ class SlackHuddleClient:
                 {"canvas_id": canvas_id, "mimetype": canvas.get("mimetype")},
             )
         return canvas
+
+    def user_map(self, user_ids: Iterable[str]) -> dict[str, str]:
+        """Resolve ``users.info`` display names for ``user_ids`` (best-effort).
+
+        Unknown/unresolvable IDs are omitted; callers fall back to raw IDs.
+        """
+        mapping: dict[str, str] = {}
+        for uid in dict.fromkeys(user_ids):
+            if not isinstance(uid, str) or not uid.startswith("U"):
+                continue
+            try:
+                user = self._request("users.info", user=uid).get("user", {})
+                profile = user.get("profile", {})
+                name = profile.get("display_name") or profile.get("real_name") or ""
+                if name:
+                    mapping[uid] = str(name)
+            except Exception:
+                logger.debug("could not resolve user %s", uid, exc_info=True)
+        return mapping
+
+    def channel_name(self, channel_id: str) -> str | None:
+        """Resolve ``conversations.info`` channel name (best-effort)."""
+        try:
+            channel = self._request("conversations.info", channel=channel_id).get("channel", {})
+            return channel.get("name") or None
+        except Exception:
+            logger.debug("could not resolve channel %s", channel_id, exc_info=True)
+            return None
+
+    def fetch_canvas_html(self, canvas: dict[str, Any]) -> str | None:
+        """Fetch the rendered HTML body of a huddle canvas.
+
+        ``files.info`` for canvas files (``application/vnd.slack-docs``) no longer
+        returns ``plain_text`` with the summary — it only returns ``title``.
+        The real summary lives in the HTML at ``url_private_download`` (Quip canvas).
+        This is the same endpoint the Slack web client uses to render the canvas.
+
+        Returns the raw HTML on success, or None on failure (caller should
+        fallback to title). Never raises on HTTP errors — the summary is
+        best-effort.
+        """
+        url = canvas.get("url_private_download") or canvas.get("url_private")
+        if not isinstance(url, str) or not url:
+            return None
+        try:
+            headers = {"User-Agent": DEFAULT_USER_AGENT}
+            response = self._client.get(
+                url, headers=headers, cookies={"d": self._xoxd}, follow_redirects=True
+            )
+            if response.status_code == 200 and response.text:
+                return response.text
+        except Exception:
+            logger.debug("failed to fetch canvas HTML from %s", url, exc_info=True)
+        return None
 
 
 def _sleep_backoff(attempt: int) -> None:

@@ -6,6 +6,8 @@ from typing import Any
 
 from slack_huddle.parser import (
     SpeakerTurn,
+    _extract_sections,
+    canvas_html_to_markdown,
     extract_summary_from_canvas,
     format_lines,
     format_markdown,
@@ -160,3 +162,91 @@ def test_speaker_turn_display_name() -> None:
     assert turn.display_name() == "U1"
     assert turn.display_name({"U1": "Alice"}) == "Alice"
     assert turn.display_name({"U2": "Bob"}) == "U1"
+
+
+def test_canvas_html_to_markdown_strips_script_style_and_tags() -> None:
+    html = (
+        "<html><head><script>evil()</script><style>.x{color:red}</style></head>"
+        "<body><h1>Título</h1><p>Linha 1<br>Linha 2</p>"
+        "<ul><li>Item A</li><li>Item B</li></ul></body></html>"
+    )
+    md = canvas_html_to_markdown(html)
+    assert "evil" not in md
+    assert ".x{color:red}" not in md
+    assert "Título" in md
+    assert "Linha 1\nLinha 2" in md
+    assert "Item A" in md and "Item B" in md
+
+
+def test_canvas_html_to_markdown_decodes_entities() -> None:
+    md = canvas_html_to_markdown("<p>A &amp; B &lt;tag&gt; &quot;q&quot;</p>")
+    assert 'A & B <tag> "q"' in md
+
+
+def test_extract_summary_ignores_title_only_plain_text() -> None:
+    title = ":headphones: Notas do círculo: 24/8/26 no canal #C057VNWAZPE"
+    summary = extract_summary_from_canvas({"plain_text": title, "title": title})
+    assert summary["summary_md"] == ""
+
+
+def _canvas_md() -> str:
+    return (
+        ":headphones: Notas do círculo: 24/8/26 no canal #C057VNWAZPE\n"
+        "\n"
+        ":handshake: Participantes\n"
+        "\n"
+        "@U07SQPEA7GF, @U06MNN8L551 e @U0435GWR8B1\n"
+        "\n"
+        ":star: Resumo\n"
+        "\n"
+        "Discutimos o sprint.\n"
+        "\n"
+        ":white_check_mark: Itens de ação\n"
+        "\n"
+        "@U07SQPEA7GF compartilhará a preocupação com Gabriel [5:02]\n"
+        "\n"
+        "Equipe revisará os cenários [30:09]\n"
+    )
+
+
+def test_extract_summary_parses_sections_from_override() -> None:
+    summary = extract_summary_from_canvas(
+        {"title": ":headphones: Notas", "url_private": "https://example.slack.com/files/x"},
+        summary_md_override=_canvas_md(),
+    )
+    assert summary["summary_md"].startswith(":headphones:")
+    assert summary["attendees"] == ["U07SQPEA7GF", "U06MNN8L551", "U0435GWR8B1"]
+    assert len(summary["action_items"]) == 2
+    first = summary["action_items"][0]
+    assert first["owner"] == "U07SQPEA7GF"
+    assert "[5:02]" not in first["text"]
+    assert first["timestamp"] == "5:02"
+    second = summary["action_items"][1]
+    assert second["owner"] == ""
+    assert second["timestamp"] == "30:09"
+
+
+def test_extract_sections_unknown_headers_ignored() -> None:
+    sections = _extract_sections(_canvas_md())
+    assert set(sections) == {
+        "notas do círculo: 24/8/26 no canal #c057vnwazpe",
+        "participantes",
+        "resumo",
+        "itens de ação",
+    }
+
+
+def test_extract_sections_stops_at_disclaimer_footer() -> None:
+    md = (
+        ":white_check_mark: Itens de ação\n"
+        "\n"
+        "@U1 fazer coisa [5:02]\n"
+        "\n"
+        "Esta ferramenta usa IA para gerar anotações e pode conter imprecisões.\n"
+        "\n"
+        "File ID: sf:F0BS5UYC0H3, File URL: https://example.slack.com/files/x\n"
+    )
+    sections = _extract_sections(md)
+    assert sections["itens de ação"] == ["@U1 fazer coisa [5:02]"]
+    assert not any("ferramenta" in line for lines in sections.values() for line in lines)
+    assert not any("File ID" in line for lines in sections.values() for line in lines)
